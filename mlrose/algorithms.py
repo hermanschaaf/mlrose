@@ -5,6 +5,7 @@
 # License: BSD 3 clause
 
 import numpy as np
+import time
 from .decay import GeomDecay
 
 
@@ -51,6 +52,12 @@ def hill_climb(problem, max_iters=np.inf, restarts=0, init_state=None):
 
     best_fitness = -1*np.inf
     best_state = None
+    stats = {
+        "iters": 0,
+        "time": 0,
+    }
+    start_time = time.time()
+    total_iters = 0
 
     for _ in range(restarts + 1):
         # Initialize optimization problem
@@ -63,6 +70,7 @@ def hill_climb(problem, max_iters=np.inf, restarts=0, init_state=None):
 
         while iters < max_iters:
             iters += 1
+            total_iters += 1
 
             # Find neighbors and determine best neighbor
             problem.find_neighbors()
@@ -82,7 +90,12 @@ def hill_climb(problem, max_iters=np.inf, restarts=0, init_state=None):
             best_state = problem.get_state()
 
     best_fitness = problem.get_maximize()*best_fitness
-    return best_state, best_fitness
+
+    end_time = time.time()
+    stats["iters"] = total_iters
+    stats["time"] = end_time - start_time
+
+    return best_state, best_fitness, stats
 
 
 def random_hill_climb(problem, max_attempts=10, max_iters=np.inf, restarts=0,
@@ -135,6 +148,12 @@ def random_hill_climb(problem, max_attempts=10, max_iters=np.inf, restarts=0,
 
     best_fitness = -1*np.inf
     best_state = None
+    stats = {
+        "iters": 0,
+        "time": 0,
+    }
+    start_time = time.time()
+    total_iters = 0
 
     for _ in range(restarts + 1):
         # Initialize optimization problem and attempts counter
@@ -148,6 +167,7 @@ def random_hill_climb(problem, max_attempts=10, max_iters=np.inf, restarts=0,
 
         while (attempts < max_attempts) and (iters < max_iters):
             iters += 1
+            total_iters += 1
 
             # Find random neighbor and evaluate fitness
             next_state = problem.random_neighbor()
@@ -168,7 +188,12 @@ def random_hill_climb(problem, max_attempts=10, max_iters=np.inf, restarts=0,
             best_state = problem.get_state()
 
     best_fitness = problem.get_maximize()*best_fitness
-    return best_state, best_fitness
+
+    end_time = time.time()
+    stats["iters"] = total_iters
+    stats["time"] = end_time - start_time
+
+    return best_state, best_fitness, stats
 
 
 def simulated_annealing(problem, schedule=GeomDecay(), max_attempts=10,
@@ -223,6 +248,12 @@ def simulated_annealing(problem, schedule=GeomDecay(), max_attempts=10,
 
     attempts = 0
     iters = 0
+    stats = {
+        "iters": 0,
+        "time": 0,
+    }
+    start_time = time.time()
+    total_iters = 0
 
     while (attempts < max_attempts) and (iters < max_iters):
         temp = schedule.evaluate(iters)
@@ -252,7 +283,11 @@ def simulated_annealing(problem, schedule=GeomDecay(), max_attempts=10,
     best_fitness = problem.get_maximize()*problem.get_fitness()
     best_state = problem.get_state()
 
-    return best_state, best_fitness
+    end_time = time.time()
+    stats["iters"] = iters
+    stats["time"] = end_time - start_time
+
+    return best_state, best_fitness, stats
 
 
 def genetic_alg(problem, pop_size=200, mutation_prob=0.1, max_attempts=10,
@@ -312,6 +347,12 @@ def genetic_alg(problem, pop_size=200, mutation_prob=0.1, max_attempts=10,
     problem.random_pop(pop_size)
     attempts = 0
     iters = 0
+    stats = {
+        "iters": 0,
+        "time": 0,
+    }
+    start_time = time.time()
+    total_iters = 0
 
     while (attempts < max_attempts) and (iters < max_iters):
         iters += 1
@@ -351,7 +392,11 @@ def genetic_alg(problem, pop_size=200, mutation_prob=0.1, max_attempts=10,
     best_fitness = problem.get_maximize()*problem.get_fitness()
     best_state = problem.get_state()
 
-    return best_state, best_fitness
+    end_time = time.time()
+    stats["iters"] = iters
+    stats["time"] = end_time - start_time
+
+    return best_state, best_fitness, stats
 
 
 def mimic(problem, pop_size=200, keep_pct=0.2, max_attempts=10,
@@ -417,6 +462,12 @@ def mimic(problem, pop_size=200, keep_pct=0.2, max_attempts=10,
     problem.random_pop(pop_size)
     attempts = 0
     iters = 0
+    stats = {
+        "iters": 0,
+        "time": 0,
+    }
+    start_time = time.time()
+    total_iters = 0
 
     while (attempts < max_attempts) and (iters < max_iters):
         iters += 1
@@ -447,4 +498,8 @@ def mimic(problem, pop_size=200, keep_pct=0.2, max_attempts=10,
     best_fitness = problem.get_maximize()*problem.get_fitness()
     best_state = problem.get_state().astype(int)
 
-    return best_state, best_fitness
+    end_time = time.time()
+    stats["iters"] = iters
+    stats["time"] = end_time - start_time
+
+    return best_state, best_fitness, stats
