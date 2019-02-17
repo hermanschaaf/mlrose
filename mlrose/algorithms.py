@@ -9,7 +9,13 @@ import time
 from .decay import GeomDecay
 
 
-def hill_climb(problem, max_iters=np.inf, restarts=0, init_state=None):
+def _timed_out(start_time, max_time):
+    if max_time is None:
+        return False
+    return (time.time() - start_time) >= max_time
+
+
+def hill_climb(problem, max_iters=np.inf, restarts=0, init_state=None, max_time=None):
     """Use standard hill climbing to find the optimum for a given
     optimization problem.
 
@@ -55,11 +61,15 @@ def hill_climb(problem, max_iters=np.inf, restarts=0, init_state=None):
     stats = {
         "iters": 0,
         "time": 0,
+        "history": [],
     }
     start_time = time.time()
     total_iters = 0
 
     for _ in range(restarts + 1):
+        if _timed_out(start_time, max_time):
+            break
+
         # Initialize optimization problem
         if init_state is None:
             problem.reset()
@@ -68,7 +78,7 @@ def hill_climb(problem, max_iters=np.inf, restarts=0, init_state=None):
 
         iters = 0
 
-        while iters < max_iters:
+        while iters < max_iters and not _timed_out(start_time, max_time):
             iters += 1
             total_iters += 1
 
@@ -80,9 +90,13 @@ def hill_climb(problem, max_iters=np.inf, restarts=0, init_state=None):
             # If best neighbor is an improvement, move to that state
             if next_fitness > problem.get_fitness():
                 problem.set_state(next_state)
-
             else:
                 break
+
+            if best_fitness is None or next_fitness > best_fitness:
+                best_fitness = next_fitness
+                best_state = problem.get_state()
+                stats["history"].append((time.time() - start_time, problem.get_maximize()*best_fitness))
 
         # Update best state and best fitness
         if problem.get_fitness() > best_fitness:
@@ -99,7 +113,7 @@ def hill_climb(problem, max_iters=np.inf, restarts=0, init_state=None):
 
 
 def random_hill_climb(problem, max_attempts=10, max_iters=np.inf, restarts=0,
-                      init_state=None):
+                      init_state=None, max_time=None):
     """Use randomized hill climbing to find the optimum for a given
     optimization problem.
 
@@ -151,11 +165,15 @@ def random_hill_climb(problem, max_attempts=10, max_iters=np.inf, restarts=0,
     stats = {
         "iters": 0,
         "time": 0,
+        "history": [],
     }
     start_time = time.time()
     total_iters = 0
 
     for _ in range(restarts + 1):
+        if _timed_out(start_time, max_time):
+            break
+
         # Initialize optimization problem and attempts counter
         if init_state is None:
             problem.reset()
@@ -165,7 +183,7 @@ def random_hill_climb(problem, max_attempts=10, max_iters=np.inf, restarts=0,
         attempts = 0
         iters = 0
 
-        while (attempts < max_attempts) and (iters < max_iters):
+        while (attempts < max_attempts) and (iters < max_iters) and not _timed_out(start_time, max_time):
             iters += 1
             total_iters += 1
 
@@ -182,6 +200,11 @@ def random_hill_climb(problem, max_attempts=10, max_iters=np.inf, restarts=0,
             else:
                 attempts += 1
 
+            if best_fitness is None or next_fitness > best_fitness:
+                best_fitness = next_fitness
+                best_state = problem.get_state()
+                stats["history"].append((time.time() - start_time, problem.get_maximize()*best_fitness))
+
         # Update best state and best fitness
         if problem.get_fitness() > best_fitness:
             best_fitness = problem.get_fitness()
@@ -197,7 +220,7 @@ def random_hill_climb(problem, max_attempts=10, max_iters=np.inf, restarts=0,
 
 
 def simulated_annealing(problem, schedule=GeomDecay(), max_attempts=10,
-                        max_iters=np.inf, init_state=None):
+                        max_iters=np.inf, restarts=0, init_state=None, max_time=None):
     """Use simulated annealing to find the optimum for a given
     optimization problem.
 
@@ -240,58 +263,70 @@ def simulated_annealing(problem, schedule=GeomDecay(), max_attempts=10,
     if init_state is not None and len(init_state) != problem.get_length():
         raise Exception("""init_state must have same length as problem.""")
 
-    # Initialize problem, time and attempts counter
-    if init_state is None:
-        problem.reset()
-    else:
-        problem.set_state(init_state)
-
-    attempts = 0
-    iters = 0
     stats = {
         "iters": 0,
         "time": 0,
+        "history": [],
     }
     start_time = time.time()
     total_iters = 0
 
-    while (attempts < max_attempts) and (iters < max_iters):
-        temp = schedule.evaluate(iters)
-        iters += 1
-
-        if temp == 0:
+    best_fitness = None
+    best_state = None
+    for _ in range(restarts + 1):
+        if _timed_out(start_time, max_time):
             break
 
+        # Initialize problem, time and attempts counter
+        if init_state is None:
+            problem.reset()
         else:
-            # Find random neighbor and evaluate fitness
-            next_state = problem.random_neighbor()
-            next_fitness = problem.eval_fitness(next_state)
+            problem.set_state(init_state)
 
-            # Calculate delta E and change prob
-            delta_e = next_fitness - problem.get_fitness()
-            prob = np.exp(delta_e/temp)
+        attempts = 0
+        iters = 0
 
-            # If best neighbor is an improvement or random value is less
-            # than prob, move to that state and reset attempts counter
-            if (delta_e > 0) or (np.random.uniform() < prob):
-                problem.set_state(next_state)
-                attempts = 0
+        while (attempts < max_attempts) and (iters < max_iters) and not _timed_out(start_time, max_time):
+            temp = schedule.evaluate(iters)
+            iters += 1
+            total_iters += 1
+
+            if temp == 0:
+                break
 
             else:
-                attempts += 1
+                # Find random neighbor and evaluate fitness
+                next_state = problem.random_neighbor()
+                next_fitness = problem.eval_fitness(next_state)
 
-    best_fitness = problem.get_maximize()*problem.get_fitness()
-    best_state = problem.get_state()
+                # Calculate delta E and change prob
+                delta_e = next_fitness - problem.get_fitness()
+                prob = np.exp(delta_e/temp)
+
+                # If best neighbor is an improvement or random value is less
+                # than prob, move to that state and reset attempts counter
+                if (delta_e > 0) or (np.random.uniform() < prob):
+                    problem.set_state(next_state)
+                    attempts = 0
+                else:
+                    attempts += 1
+
+                if best_fitness is None or next_fitness > best_fitness:
+                    best_fitness = next_fitness
+                    best_state = problem.get_state()
+                    stats["history"].append((time.time() - start_time, problem.get_maximize()*best_fitness))
+
+    best_fitness = problem.get_maximize()*best_fitness
 
     end_time = time.time()
-    stats["iters"] = iters
+    stats["iters"] = total_iters
     stats["time"] = end_time - start_time
 
     return best_state, best_fitness, stats
 
 
 def genetic_alg(problem, pop_size=200, mutation_prob=0.1, max_attempts=10,
-                max_iters=np.inf):
+                max_iters=np.inf, restarts=0, max_time=None):
     """Use a standard genetic algorithm to find the optimum for a given
     optimization problem.
 
@@ -343,64 +378,77 @@ def genetic_alg(problem, pop_size=200, mutation_prob=0.1, max_attempts=10,
         raise Exception("""max_iters must be a positive integer.""")
 
     # Initialize problem, population and attempts counter
-    problem.reset()
-    problem.random_pop(pop_size)
-    attempts = 0
-    iters = 0
+
     stats = {
         "iters": 0,
         "time": 0,
+        "history": [],
     }
     start_time = time.time()
     total_iters = 0
 
-    while (attempts < max_attempts) and (iters < max_iters):
-        iters += 1
+    best_fitness = None
+    best_state = None
+    for _ in range(restarts + 1):
+        if _timed_out(start_time, max_time):
+            break
 
-        # Calculate breeding probabilities
-        problem.eval_mate_probs()
+        problem.reset()
+        problem.random_pop(pop_size)
+        attempts = 0
+        iters = 0
 
-        # Create next generation of population
-        next_gen = []
+        while (attempts < max_attempts) and (iters < max_iters) and not _timed_out(start_time, max_time):
+            iters += 1
+            total_iters += 1
 
-        for _ in range(pop_size):
-            # Select parents
-            selected = np.random.choice(pop_size, size=2,
-                                        p=problem.get_mate_probs())
-            parent_1 = problem.get_population()[selected[0]]
-            parent_2 = problem.get_population()[selected[1]]
+            # Calculate breeding probabilities
+            problem.eval_mate_probs()
 
-            # Create offspring
-            child = problem.reproduce(parent_1, parent_2, mutation_prob)
-            next_gen.append(child)
+            # Create next generation of population
+            next_gen = []
 
-        next_gen = np.array(next_gen)
-        problem.set_population(next_gen)
+            for _ in range(pop_size):
+                # Select parents
+                selected = np.random.choice(pop_size, size=2,
+                                            p=problem.get_mate_probs())
+                parent_1 = problem.get_population()[selected[0]]
+                parent_2 = problem.get_population()[selected[1]]
 
-        next_state = problem.best_child()
-        next_fitness = problem.eval_fitness(next_state)
+                # Create offspring
+                child = problem.reproduce(parent_1, parent_2, mutation_prob)
+                next_gen.append(child)
 
-        # If best child is an improvement,
-        # move to that state and reset attempts counter
-        if next_fitness > problem.get_fitness():
-            problem.set_state(next_state)
-            attempts = 0
+            next_gen = np.array(next_gen)
+            problem.set_population(next_gen)
 
-        else:
-            attempts += 1
+            next_state = problem.best_child()
+            next_fitness = problem.eval_fitness(next_state)
 
-    best_fitness = problem.get_maximize()*problem.get_fitness()
-    best_state = problem.get_state()
+            # If best child is an improvement,
+            # move to that state and reset attempts counter
+            if next_fitness > problem.get_fitness():
+                problem.set_state(next_state)
+                attempts = 0
+            else:
+                attempts += 1
+
+            if best_fitness is None or next_fitness > best_fitness:
+                best_fitness = next_fitness
+                best_state = problem.get_state()
+                stats["history"].append((time.time() - start_time, problem.get_maximize()*next_fitness))
+
+    best_fitness = problem.get_maximize()*best_fitness
 
     end_time = time.time()
-    stats["iters"] = iters
+    stats["iters"] = total_iters
     stats["time"] = end_time - start_time
 
     return best_state, best_fitness, stats
 
 
 def mimic(problem, pop_size=200, keep_pct=0.2, max_attempts=10,
-          max_iters=np.inf):
+          max_iters=np.inf, restarts=0, max_time=None):
     """Use MIMIC to find the optimum for a given optimization problem.
 
     Parameters
@@ -458,48 +506,60 @@ def mimic(problem, pop_size=200, keep_pct=0.2, max_attempts=10,
         raise Exception("""max_iters must be a positive integer.""")
 
     # Initialize problem, population and attempts counter
-    problem.reset()
-    problem.random_pop(pop_size)
-    attempts = 0
-    iters = 0
     stats = {
         "iters": 0,
         "time": 0,
+        "history": [],
     }
     start_time = time.time()
     total_iters = 0
 
-    while (attempts < max_attempts) and (iters < max_iters):
-        iters += 1
+    best_fitness = None
+    best_state = None
+    for _ in range(restarts + 1):
+        if _timed_out(start_time, max_time):
+            break
 
-        # Get top n percent of population
-        problem.find_top_pct(keep_pct)
+        iters = 0
+        attempts = 0
+        problem.reset()
+        problem.random_pop(pop_size)
 
-        # Update probability estimates
-        problem.eval_node_probs()
+        while (attempts < max_attempts) and (iters < max_iters) and not _timed_out(start_time, max_time):
+            iters += 1
+            total_iters += 1
 
-        # Generate new sample
-        new_sample = problem.sample_pop(pop_size)
-        problem.set_population(new_sample)
+            # Get top n percent of population
+            problem.find_top_pct(keep_pct)
 
-        next_state = problem.best_child()
+            # Update probability estimates
+            problem.eval_node_probs()
 
-        next_fitness = problem.eval_fitness(next_state)
+            # Generate new sample
+            new_sample = problem.sample_pop(pop_size)
+            problem.set_population(new_sample)
 
-        # If best child is an improvement,
-        # move to that state and reset attempts counter
-        if next_fitness > problem.get_fitness():
-            problem.set_state(next_state)
-            attempts = 0
+            next_state = problem.best_child()
 
-        else:
-            attempts += 1
+            next_fitness = problem.eval_fitness(next_state)
 
-    best_fitness = problem.get_maximize()*problem.get_fitness()
-    best_state = problem.get_state().astype(int)
+            # If best child is an improvement,
+            # move to that state and reset attempts counter
+            if next_fitness > problem.get_fitness():
+                problem.set_state(next_state)
+                attempts = 0
+            else:
+                attempts += 1
+
+            if best_fitness is None or next_fitness > best_fitness:
+                best_fitness = next_fitness
+                best_state = problem.get_state()
+                stats["history"].append((time.time() - start_time, problem.get_maximize()*best_fitness))
+
+    best_fitness = problem.get_maximize()*best_fitness
 
     end_time = time.time()
-    stats["iters"] = iters
+    stats["iters"] = total_iters
     stats["time"] = end_time - start_time
 
     return best_state, best_fitness, stats
