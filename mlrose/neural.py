@@ -3,6 +3,7 @@
 # Author: Genevieve Hayes
 # License: BSD 3 clause
 
+import time
 import numpy as np
 from sklearn.metrics import mean_squared_error, log_loss
 from .activation import identity, relu, sigmoid, softmax, tanh
@@ -108,6 +109,8 @@ def gradient_descent(problem, max_attempts=10, max_iters=np.inf,
     if init_state is not None and len(init_state) != problem.get_length():
         raise Exception("""init_state must have same length as problem.""")
 
+    start_time = time.time()
+
     # Initialize problem, time and attempts counter
     if init_state is None:
         problem.reset()
@@ -117,11 +120,18 @@ def gradient_descent(problem, max_attempts=10, max_iters=np.inf,
     attempts = 0
     iters = 0
 
-    best_fitness = problem.get_maximize()*problem.get_fitness()
+    best_fitness = problem.get_fitness()
     best_state = problem.get_state()
+    stats = {
+        "iters": 0,
+        "time": 0,
+        "history": [(time.time() - start_time, problem.get_maximize()*best_fitness)],
+    }
+    total_iters = 0
 
     while (attempts < max_attempts) and (iters < max_iters):
         iters += 1
+        total_iters += 1
 
         # Update weights
         updates = flatten_weights(problem.calculate_updates())
@@ -134,13 +144,20 @@ def gradient_descent(problem, max_attempts=10, max_iters=np.inf,
         else:
             attempts += 1
 
-        if next_fitness > problem.get_maximize()*best_fitness:
-            best_fitness = problem.get_maximize()*next_fitness
+        if next_fitness > best_fitness:
+            best_fitness = next_fitness
             best_state = next_state
+            stats["history"].append((time.time() - start_time, problem.get_maximize()*best_fitness))
 
         problem.set_state(next_state)
 
-    return best_state, best_fitness
+    best_fitness = problem.get_maximize()*best_fitness
+
+    end_time = time.time()
+    stats["iters"] = total_iters
+    stats["time"] = end_time - start_time
+
+    return best_state, best_fitness, stats
 
 
 class NetworkWeights:
@@ -540,7 +557,7 @@ class NeuralNetwork:
             if init_weights is None:
                 init_weights = np.random.uniform(-1, 1, num_nodes)
 
-            fitted_weights, loss = random_hill_climb(
+            fitted_weights, loss, stats = random_hill_climb(
                 problem,
                 max_attempts=self.max_attempts, max_iters=self.max_iters,
                 restarts=0, init_state=init_weights)
@@ -548,13 +565,13 @@ class NeuralNetwork:
         elif self.algorithm == 'simulated_annealing':
             if init_weights is None:
                 init_weights = np.random.uniform(-1, 1, num_nodes)
-            fitted_weights, loss = simulated_annealing(
+            fitted_weights, loss, stats = simulated_annealing(
                 problem,
                 schedule=self.schedule, max_attempts=self.max_attempts,
                 max_iters=self.max_iters, init_state=init_weights)
 
         elif self.algorithm == 'genetic_alg':
-            fitted_weights, loss = genetic_alg(
+            fitted_weights, loss, stats = genetic_alg(
                 problem,
                 pop_size=self.pop_size, mutation_prob=self.mutation_prob,
                 max_attempts=self.max_attempts, max_iters=self.max_iters)
@@ -562,7 +579,7 @@ class NeuralNetwork:
         else:  # Gradient descent case
             if init_weights is None:
                 init_weights = np.random.uniform(-1, 1, num_nodes)
-            fitted_weights, loss = gradient_descent(
+            fitted_weights, loss, stats = gradient_descent(
                 problem,
                 max_attempts=self.max_attempts, max_iters=self.max_iters,
                 init_state=init_weights)
@@ -572,6 +589,7 @@ class NeuralNetwork:
         self.fitted_weights = fitted_weights
         self.loss = loss
         self.output_activation = fitness.get_output_activation()
+        return stats
 
     def predict(self, X):
         """Use model to predict data labels for given feature array.
